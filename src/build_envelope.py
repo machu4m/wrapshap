@@ -21,16 +21,20 @@ import os
 import random
 import sys
 
-from reportlab.lib.colors import CMYKColor, CMYKColorSep
+from reportlab.lib.colors import CMYKColor
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas as rl_canvas
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import typeset as T
+from brand import (AR, AR_BOLD, AR_SEMI, BLACK, CREASE, DIELINE, F_BLACK,
+                   F_BOLD, F_MED, F_SEMI, F_XBOLD, GLUE, GOLD, GOLD_DEEP,
+                   PAPER, REG, SPLAT_DARK, SPLAT_MID, YELLOW, fit, logo,
+                   text)
+from texture import blob, fine_spray, paint_marks
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-FONTS = os.path.join(HERE, "fonts")
-OUT = os.path.abspath(os.path.join(HERE, os.pardir, "print"))
+OUT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   os.pardir, "print"))
 
 # --------------------------------------------------------------------------- #
 # Geometry - all values in millimetres
@@ -66,177 +70,16 @@ NOTCH_R = 11.0       # thumb notch on the front panel opening edge
 FRONT_VISIBLE_TOP = FRNT_Y1 - SEAL                # 410
 
 # --------------------------------------------------------------------------- #
-# Palette - process CMYK, black and yellow only. Total area coverage is kept
-# at or under 200% so it dries cleanly on uncoated 100 gsm wood-free.
-# --------------------------------------------------------------------------- #
-BLACK = CMYKColor(0.40, 0.30, 0.30, 1.00)      # rich black, TAC 200%
-YELLOW = CMYKColor(0.00, 0.16, 1.00, 0.00)     # brand golden yellow
-GOLD = CMYKColor(0.00, 0.32, 1.00, 0.02)       # amber, logo shadow + accents
-GOLD_DEEP = CMYKColor(0.00, 0.42, 1.00, 0.14)
-SPLAT_MID = CMYKColor(0.00, 0.26, 1.00, 0.55)  # mid splatter on black
-SPLAT_DARK = CMYKColor(0.00, 0.22, 1.00, 0.78) # low-contrast splatter, TAC 200%
-PAPER = CMYKColor(0, 0, 0, 0)                  # unprinted stock = the white type
-
-# Spot channels for the finishing department. These are separations, not
-# process build-ups, so the die house can pull them as their own plates.
-DIELINE = CMYKColorSep(0.00, 1.00, 0.00, 0.00, spotName="Dieline")
-CREASE = CMYKColorSep(1.00, 0.00, 0.00, 0.00, spotName="Crease")
-GLUE = CMYKColorSep(0.55, 0.00, 1.00, 0.00, spotName="Glue")
-
-# --------------------------------------------------------------------------- #
-# Type
-# --------------------------------------------------------------------------- #
-F_BLACK = T.Face(os.path.join(FONTS, "Montserrat-Black.ttf"))
-F_XBOLD = T.Face(os.path.join(FONTS, "Montserrat-ExtraBold.ttf"))
-F_BOLD = T.Face(os.path.join(FONTS, "Montserrat-Bold.ttf"))
-F_SEMI = T.Face(os.path.join(FONTS, "Montserrat-SemiBold.ttf"))
-F_MED = T.Face(os.path.join(FONTS, "Montserrat-Medium.ttf"))
-AR_BOLD = T.Face(os.path.join(FONTS, "Cairo-Bold.ttf"))
-AR_SEMI = T.Face(os.path.join(FONTS, "Cairo-SemiBold.ttf"))
-
-AR = dict(direction="rtl", script="arab", language="ar")
-
-
-def fit(face, text, target_mm, tracking_em=0.0, **kw):
-    """Point size at which `text` sets to exactly `target_mm` wide.
-
-    Tracking is expressed as a fraction of the em so the solve stays linear.
-    """
-    probe = T.layout(face, text, 100.0, tracking=0.0, **kw)
-    gaps = max(len(probe.glyphs) - 1, 0)
-    per_pt = probe.width / 100.0 + tracking_em * gaps
-    return (target_mm * mm) / per_pt
-
-
-def text(c, face, s, size, x, y, colour, align="left", tracking_em=0.0, **kw):
-    """Draw a line of outlined type. Coordinates in points, size in points."""
-    run = T.layout(face, s, size, tracking=tracking_em * size, **kw)
-    path = T.run_path(c, run, x, y, align=align)
-    c.setFillColor(colour)
-    c.drawPath(path, stroke=0, fill=1)
-    return run.width
-
-
-# --------------------------------------------------------------------------- #
-# Paint splatter - the brand texture, built as real vector contours
-# --------------------------------------------------------------------------- #
-def _closed_spline(c, pts):
-    """A closed Catmull-Rom spline through `pts`, emitted as cubic beziers."""
-    p = c.beginPath()
-    n = len(pts)
-    p.moveTo(*pts[0])
-    for i in range(n):
-        p0 = pts[(i - 1) % n]
-        p1 = pts[i]
-        p2 = pts[(i + 1) % n]
-        p3 = pts[(i + 2) % n]
-        b1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
-        b2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
-        p.curveTo(b1[0], b1[1], b2[0], b2[1], p2[0], p2[1])
-    p.close()
-    return p
-
-
-def blob(c, cx, cy, r, rng, lobes=11, rough=0.42, stretch=1.0, angle=0.0):
-    """One organic paint mark: a circle pushed around by random radii."""
-    pts = []
-    for i in range(lobes):
-        a = 2 * math.pi * i / lobes
-        rr = r * (1.0 - rough + rng.random() * rough * 2.0)
-        px, py = math.cos(a) * rr * stretch, math.sin(a) * rr
-        ca, sa = math.cos(angle), math.sin(angle)
-        pts.append((cx + px * ca - py * sa, cy + px * sa + py * ca))
-    return _closed_spline(c, pts)
-
-
-def paint_marks(c, x0, y0, w, h, rng, count, r_lo, r_hi, colours,
-                avoid=None, streaks=True, droplets=True):
-    """Thrown paint: a main mark, a few flung streaks, a ring of droplets.
-
-    `avoid` is a list of rects in points that the mark centres stay out of,
-    so the texture never builds up behind the type.
-    """
-    keep_clear = avoid or []
-    for _ in range(count):
-        cx = cy = 0.0
-        for _try in range(40):
-            cx = x0 + rng.random() * w
-            cy = y0 + rng.random() * h
-            if not any(r[0] < cx < r[2] and r[1] < cy < r[3] for r in keep_clear):
-                break
-        r = (r_lo + rng.random() * (r_hi - r_lo)) * mm
-        c.setFillColor(rng.choice(colours))
-        c.drawPath(blob(c, cx, cy, r, rng, lobes=15, rough=0.38,
-                        stretch=1.0 + rng.random() * 0.8,
-                        angle=rng.random() * math.pi), stroke=0, fill=1)
-        if streaks:
-            for _ in range(rng.randint(1, 3)):
-                a_ = rng.random() * 2 * math.pi
-                d = r * (1.0 + rng.random() * 1.8)
-                c.drawPath(blob(c, cx + math.cos(a_) * d, cy + math.sin(a_) * d,
-                                r * 0.22, rng, lobes=9, rough=0.45,
-                                stretch=3.0 + rng.random() * 3.0, angle=a_),
-                           stroke=0, fill=1)
-        if droplets:
-            for _ in range(rng.randint(5, 14)):
-                a_ = rng.random() * 2 * math.pi
-                d = r * (1.2 + rng.random() * 3.0)
-                dr = r * (0.05 + rng.random() * 0.16)
-                c.drawPath(blob(c, cx + math.cos(a_) * d, cy + math.sin(a_) * d,
-                                dr, rng, lobes=7, rough=0.30), stroke=0, fill=1)
-
-
-def fine_spray(c, x0, y0, w, h, rng, count, colours, lo=0.25, hi=1.0):
-    """Loose overspray that ties the larger marks together."""
-    for _ in range(count):
-        cx = x0 + rng.random() * w
-        cy = y0 + rng.random() * h
-        r = (lo + rng.random() * (hi - lo)) * mm
-        c.setFillColor(rng.choice(colours))
-        c.drawPath(blob(c, cx, cy, r, rng, lobes=7, rough=0.34), stroke=0, fill=1)
-
-
-# --------------------------------------------------------------------------- #
 # Brand marks
 # --------------------------------------------------------------------------- #
-def draw_logo(c, cx_mm, baseline_mm, width_mm, shadow=True):
-    """The Wrapshap wordmark: arched, yellow, with a black keyline and a drop.
+def draw_logo(c, cx_mm, bottom_mm, width_mm):
+    """The supplied Wrapshap wordmark, traced to vector and recoloured.
 
-    Built from outlines rather than placed art so the file stays self-contained.
-    Swap this function for a placed vector if the official logo file is to hand.
+    Three layers straight from the brand artwork: amber keyline, paper gap,
+    yellow letter cores. `bottom_mm` is the foot of the ink, not a baseline.
     """
-    word = "Wrapshap"
-    tracking_em = -0.012
-    size = fit(F_BLACK, word, width_mm, tracking_em)
-    run = T.layout(F_BLACK, word, size, tracking=tracking_em * size)
-    radius = width_mm * 2.15 * mm            # gentle convex-up arch
-    placer = T.arch_placer(cx_mm * mm, baseline_mm * mm, radius, run)
-    path = T.run_path(c, run, cx_mm * mm, baseline_mm * mm, align="center",
-                      placer=placer)
-
-    keyline = width_mm * 0.024 * mm          # scales with the mark
-    if shadow:
-        c.saveState()
-        c.translate(keyline * 0.55, -keyline * 0.55)
-        c.setStrokeColor(GOLD_DEEP)
-        c.setFillColor(GOLD_DEEP)
-        c.setLineWidth(keyline)
-        c.setLineJoin(1)
-        c.drawPath(path, stroke=1, fill=1)
-        c.restoreState()
-
-    c.saveState()
-    c.setLineJoin(1)
-    c.setStrokeColor(BLACK)
-    c.setFillColor(BLACK)
-    c.setLineWidth(keyline)
-    c.drawPath(path, stroke=1, fill=1)
-
-    c.setStrokeColor(YELLOW)
-    c.setFillColor(YELLOW)
-    c.setLineWidth(keyline * 0.14)
-    c.drawPath(path, stroke=1, fill=1)
-    c.restoreState()
+    logo().draw_full(c, (cx_mm - width_mm / 2) * mm, bottom_mm * mm,
+                     width_mm * mm, keyline=GOLD_DEEP, gap=PAPER, fill=YELLOW)
 
 
 def draw_phone(c, cx_mm, cy_mm, h_mm, colour=YELLOW):
@@ -333,7 +176,7 @@ def draw_ground(c, rng):
 
     # Keep the largest marks clear of the front-panel headline stack.
     clear = [
-        (6 * mm, 336 * mm, 143 * mm, 404 * mm),     # front headline + wordmark
+        (6 * mm, 330 * mm, 143 * mm, 416 * mm),     # front headline + wordmark
         (38 * mm, 286 * mm, 111 * mm, 330 * mm),    # front device mark
         (18 * mm, 100 * mm, 131 * mm, 165 * mm),    # back wordmark + strapline
     ]
@@ -348,19 +191,19 @@ def draw_ground(c, rng):
 def draw_front_panel(c):
     """The face of the envelope. Live artwork stops below the closed flap."""
     # Wordmark
-    draw_logo(c, CX, 382.0, 90.0)
+    draw_logo(c, CX, 374.0, 80.0)
 
     # Headline - both lines set from the longer one so the stack is even.
     size = fit(F_BLACK, TAG_2, CONTENT_W, -0.015)
-    for line, base in ((TAG_1, 358.0), (TAG_2, 346.0)):
+    for line, base in ((TAG_1, 356.0), (TAG_2, 344.0)):
         text(c, F_BLACK, line, size, CX * mm, base * mm, PAPER,
              align="center", tracking_em=-0.015)
 
     # Supporting line
     text(c, F_MED, TAG_SUB, fit(F_MED, TAG_SUB, 88.0, 0.012),
-         CX * mm, 334.0 * mm, PAPER, align="center", tracking_em=0.012)
+         CX * mm, 332.0 * mm, PAPER, align="center", tracking_em=0.012)
 
-    draw_phone(c, CX, 309.0, 28.0)
+    draw_phone(c, CX, 307.0, 28.0)
     draw_belongs_to(c, CX - CONTENT_W / 2, 256.0, CONTENT_W, 31.0)
 
 
@@ -378,7 +221,7 @@ def draw_back_panel(c):
     c.translate(-(ENV_W / 2.0) * mm, -(ENV_H / 2.0) * mm)
 
     cx = ENV_W / 2.0
-    draw_logo(c, cx, 124.0, 74.0)
+    draw_logo(c, cx, 118.0, 74.0)
 
     joined = TAG_1 + "  " + TAG_2
     text(c, F_BOLD, joined, fit(F_BOLD, joined, 92.0, 0.06),
@@ -495,9 +338,6 @@ def draw_dieline(c):
 # --------------------------------------------------------------------------- #
 # Press marks, colour bar and slug
 # --------------------------------------------------------------------------- #
-REG = CMYKColor(1, 1, 1, 1)        # registration black - prints on every plate
-
-
 def draw_marks(c):
     """Crop marks, registration targets, colour bar and job slug.
 
