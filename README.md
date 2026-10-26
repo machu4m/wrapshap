@@ -14,6 +14,12 @@ Both use the **original Wrapshap logo artwork unchanged**. It was taken as vecto
 | Ownership card | Minimal card, off-white | "HELLO MY NAME IS"-style slap sticker, tilted |
 | Quick look | `option-a-wrap-halo/wrapshap-overview.jpg` | `option-b-graffiti/wrapshap-overview.jpg` |
 
+## Wrapshap × Electro Zone Sialkot post
+
+A 1080 × 1080 launch post for Electro Zone, Sialkot is in `electro-zone-collab/`, as an editable `.ai`, a `.pdf`
+and `.png` files at 1080 and 2160 px. Its text is live and its logos, icons and background are vector. See
+`electro-zone-collab/README.md` for what to check before posting.
+
 ## Colour
 
 Both options share the same core palette. Option B adds one paint colour, Chalk.
